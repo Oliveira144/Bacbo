@@ -70,7 +70,9 @@ class BacBoAnalyzer:
 
     def detect_pattern(self):
         """
-        Detecta padrões no histórico, priorizando sequências longas e a tendência geral.
+        Detecta padrões no histórico com base na lista de 30 padrões fornecida,
+        priorizando os mais longos e mais fortes.
+        (H=Player, A=Banker, T=Tie)
         """
         if len(self.history) < 2:
             return None, None
@@ -79,94 +81,137 @@ class BacBoAnalyzer:
         n = len(outcomes)
 
         # ----------------------------------------------------
-        # Padrões de Sequências Fortes (Maior Prioridade)
+        # Padrões mais longos e de maior prioridade
+        # ----------------------------------------------------
+
+        # Padrão 29: Tie x4 ou mais
+        if n >= 4 and outcomes[-4:] == ['T', 'T', 'T', 'T']:
+            return 29, 'H'
+
+        # Padrão 26: Banker x3 - Tie - Player x3
+        if n >= 7 and outcomes[-7:] == ['A', 'A', 'A', 'T', 'H', 'H', 'H']:
+            return 26, 'H'
+
+        # Padrão 25: Player x3 - Tie - Banker x3
+        if n >= 7 and outcomes[-7:] == ['H', 'H', 'H', 'T', 'A', 'A', 'A']:
+            return 25, 'A'
+            
+        # Padrão 24: Banker x2 - Tie - Player x2
+        if n >= 5 and outcomes[-5:] == ['A', 'A', 'T', 'H', 'H']:
+            return 24, 'H'
+
+        # Padrão 23: Player x2 - Tie - Banker x2
+        if n >= 5 and outcomes[-5:] == ['H', 'H', 'T', 'A', 'A']:
+            return 23, 'A'
+
+        # Padrão 18: Tie - Player - Tie - Banker - Tie
+        if n >= 5 and outcomes[-5:] == ['T', 'H', 'T', 'A', 'T']:
+            return 18, 'T'
+            
+        # Padrão 16: Tie - Tie - Player
+        if n >= 3 and outcomes[-3:] == ['T', 'T', 'H']:
+            return 16, 'H'
+
+        # Padrão 17: Tie - Tie - Banker
+        if n >= 3 and outcomes[-3:] == ['T', 'T', 'A']:
+            return 17, 'A'
+
+        # Padrão 7: Player x4 ou mais
+        if n >= 4 and outcomes[-4:] == ['H', 'H', 'H', 'H']:
+            return 7, 'H'
+
+        # Padrão 8: Banker x4 ou mais
+        if n >= 4 and outcomes[-4:] == ['A', 'A', 'A', 'A']:
+            return 8, 'A'
+
+        # Padrão 27: Tie x2
+        if n >= 2 and outcomes[-2:] == ['T', 'T']:
+            return 27, 'T'
+
+        # ----------------------------------------------------
+        # Padrões de Média Prioridade
         # ----------------------------------------------------
         
-        # Padrão 1: HHHH (4x Jogador seguidos)
-        if n >= 4 and outcomes[-4:] == ['H', 'H', 'H', 'H']:
-            return 1, 'H'
+        # Padrão 4: Player x3
+        if n >= 3 and outcomes[-3:] == ['H', 'H', 'H']:
+            return 4, 'H'
 
-        # Padrão 2: AAAA (4x Banca seguidos)
-        if n >= 4 and outcomes[-4:] == ['A', 'A', 'A', 'A']:
-            return 2, 'A'
-            
-        # Padrão 6: H-A-H-A-H-A (Serpentina de 6 ou mais)
-        if n >= 6 and all(outcomes[i] != outcomes[i-1] for i in range(n-5, n)):
-            return 6, 'H' if outcomes[-1] == 'A' else 'A'
-            
-        # Padrão 5: H-H-A-A (Sequência Dupla)
-        if n >= 4 and outcomes[-4:] == ['H', 'H', 'A', 'A']:
-            return 5, 'H'
-
-        # Padrão 5b: A-A-H-H (Sequência Dupla Inversa)
-        if n >= 4 and outcomes[-4:] == ['A', 'A', 'H', 'H']:
+        # Padrão 5: Banker x3
+        if n >= 3 and outcomes[-3:] == ['A', 'A', 'A']:
             return 5, 'A'
 
-        # Padrão 9: H-A-A-H-A-A
-        if n >= 6 and outcomes[-6:] == ['H', 'A', 'A', 'H', 'A', 'A']:
-            return 9, 'A'
+        # Padrão 6: Tie x3
+        if n >= 3 and outcomes[-3:] == ['T', 'T', 'T']:
+            return 6, 'T'
 
-        # Padrão 10: A-H-H-A-H-H
-        if n >= 6 and outcomes[-6:] == ['A', 'H', 'H', 'A', 'H', 'H']:
-            return 10, 'H'
-
-        # Padrão 16: A-A-A-H-H-H
-        if n >= 6 and outcomes[-6:] == ['A', 'A', 'A', 'H', 'H', 'H']:
-            return 16, 'H'
-            
-        # Padrão 17: H-H-D-H-H (Ignorar Empate)
-        if n >= 5 and outcomes[-5:] == ['H', 'H', 'T', 'H', 'H']:
-            return 17, 'H'
+        # Padrão 12: Player - Tie - Player
+        if n >= 3 and outcomes[-3:] == ['H', 'T', 'H']:
+            return 12, 'H'
         
-        # ----------------------------------------------------
-        # Padrões de Tendência e Reescrita de Paleta
-        # ----------------------------------------------------
-        last_10_outcomes = outcomes[-10:]
-        h_count = last_10_outcomes.count('H')
-        a_count = last_10_outcomes.count('A')
+        # Padrão 13: Banker - Tie - Banker
+        if n >= 3 and outcomes[-3:] == ['A', 'T', 'A']:
+            return 13, 'A'
+
+        # Padrão 14: Player - Tie - Banker
+        if n >= 3 and outcomes[-3:] == ['H', 'T', 'A']:
+            return 14, 'A' # Aposta equilibrada no Banker
+
+        # Padrão 15: Banker - Tie - Player
+        if n >= 3 and outcomes[-3:] == ['A', 'T', 'H']:
+            return 15, 'H' # Aposta equilibrada no Player
+
+        # Padrão 19: Player - Player - Tie - Player
+        if n >= 4 and outcomes[-4:] == ['H', 'H', 'T', 'H']:
+            return 19, 'H'
         
-        # Padrão de Tendência Dominante (Mais de 70% de um lado nos últimos 10)
-        if h_count >= 7:
-            return 18, 'H'
-        if a_count >= 7:
-            return 19, 'A'
-            
-        # Padrão de Inversão de Paleta (Após uma tendência forte, o lado oposto começa a dominar)
-        if n >= 5 and outcomes[-3:].count('H') == 0 and outcomes[-5:].count('A') == 0:
-            if outcomes[-1] == 'A':
-                return 20, 'A'
-        if n >= 5 and outcomes[-3:].count('A') == 0 and outcomes[-5:].count('H') == 0:
-            if outcomes[-1] == 'H':
-                return 20, 'H'
+        # Padrão 21: Banker - Tie - Banker - Tie - Banker
+        if n >= 5 and outcomes[-5:] == ['A', 'T', 'A', 'T', 'A']:
+            return 21, 'A'
 
-        # ----------------------------------------------------
-        # Padrões Já Existentes e de Menor Prioridade
-        # ----------------------------------------------------
-        
-        # Padrão Rápido 2: Repetição (Ex: H H H -> Sugere H)
-        if n >= 3 and outcomes[-3:] == [outcomes[-1], outcomes[-1], outcomes[-1]]:
-            return 32, outcomes[-1]
+        # Padrão 22: Player - Tie - Player - Tie - Player
+        if n >= 5 and outcomes[-5:] == ['H', 'T', 'H', 'T', 'H']:
+            return 22, 'H'
 
-        # Padrão: 2x Jogador, 1x Banca (HH A) -> Sugere Jogador
-        if n >= 3 and outcomes[-3:] == ['H', 'H', 'A']:
-            return 33, 'H'
-
-        # Padrão: 2x Banca, 1x Jogador (AA H) -> Sugere Banca
-        if n >= 3 and outcomes[-3:] == ['A', 'A', 'H']:
-            return 34, 'A'
-
-        # Padrão: Jogador, Banca, Jogador (HAH) -> Sugere Banca
+        # Padrão 30: Player - Banker - Player (sanduíche)
         if n >= 3 and outcomes[-3:] == ['H', 'A', 'H']:
-            return 35, 'A'
-
-        # Padrão: Banca, Jogador, Banca (AHA) -> Sugere Jogador
-        if n >= 3 and outcomes[-3:] == ['A', 'H', 'A']:
-            return 36, 'H'
+            return 30, 'A'
         
-        # Padrão Rápido 1: Alternância (Ex: H A -> Sugere H)
-        if n >= 2 and outcomes[-1] != outcomes[-2]:
-            return 31, outcomes[-1]
+        # ----------------------------------------------------
+        # Padrões de Menor Prioridade
+        # ----------------------------------------------------
 
+        # Padrão 1: Player x2
+        if n >= 2 and outcomes[-2:] == ['H', 'H']:
+            return 1, 'H'
+
+        # Padrão 2: Banker x2
+        if n >= 2 and outcomes[-2:] == ['A', 'A']:
+            return 2, 'A'
+
+        # Padrão 3: Tie x2
+        if n >= 2 and outcomes[-2:] == ['T', 'T']:
+            return 3, 'T'
+
+        # Padrão 9: Player - Banker - Player - Banker
+        if n >= 4 and outcomes[-4:] == ['H', 'A', 'H', 'A']:
+            return 9, 'H'
+
+        # Padrão 10: Banker - Player - Banker - Player
+        if n >= 4 and outcomes[-4:] == ['A', 'H', 'A', 'H']:
+            return 10, 'A'
+
+        # Padrão 11: Tie - Player - Tie - Banker
+        if n >= 4 and outcomes[-4:] == ['T', 'H', 'T', 'A']:
+            return 11, 'T'
+
+        # Padrão 20: Player - Tie - Banker - Tie - Player
+        if n >= 5 and outcomes[-5:] == ['H', 'T', 'A', 'T', 'H']:
+            return 20, 'T'
+
+        # Padrão 28: Tie x3
+        if n >= 3 and outcomes[-3:] == ['T', 'T', 'T']:
+            return 28, 'H'
+            
         return None, None
 
     def load_data(self):
@@ -221,15 +266,18 @@ st.write("**Qual foi o resultado da última rodada?**")
 
 cols_outcome = st.columns(3)
 with cols_outcome[0]:
-    if st.button("🔴 Jogador", use_container_width=True, type="primary"):
+    # Botão para JOGADOR (AZUL)
+    if st.button("🔵 Jogador", use_container_width=True, type="primary"):
         st.session_state.analyzer.add_outcome('H')
         st.rerun()
 with cols_outcome[1]:
-    if st.button("🔵 Banca", use_container_width=True, type="primary"):
+    # Botão para BANCA (VERMELHO)
+    if st.button("🔴 Banca", use_container_width=True):
         st.session_state.analyzer.add_outcome('A')
         st.rerun()
 with cols_outcome[2]:
-    if st.button("🟡 Empate", use_container_width=True, type="primary"):
+    # Botão para EMPATE (AMARELO)
+    if st.button("🟡 Empate", use_container_width=True):
         st.session_state.analyzer.add_outcome('T')
         st.rerun()
 
@@ -255,13 +303,16 @@ if current_prediction:
     display_prediction = ""
     bg_color_prediction = ""
     if current_prediction == 'H':
-        display_prediction = "🔴 JOGADOR"
-        bg_color_prediction = "rgba(255, 0, 0, 0.2)"
-    elif current_prediction == 'A':
-        display_prediction = "🔵 BANCA"
+        display_prediction = "🔵 JOGADOR"
+        # Cor de fundo para o Jogador (Azul)
         bg_color_prediction = "rgba(0, 0, 255, 0.2)"
+    elif current_prediction == 'A':
+        display_prediction = "🔴 BANCA"
+        # Cor de fundo para a Banca (Vermelho)
+        bg_color_prediction = "rgba(255, 0, 0, 0.2)"
     else:
         display_prediction = "🟡 EMPATE"
+        # Cor de fundo para o Empate (Amarelo)
         bg_color_prediction = "rgba(255, 255, 0, 0.2)"
 
     st.markdown(f"""
@@ -318,7 +369,8 @@ if st.session_state.analyzer.history:
 
         for i in range(start, end):
             outcome = outcomes[i]
-            emoji = "🔴" if outcome == 'H' else "🔵" if outcome == 'A' else "🟡"
+            # Atualiza os emojis para refletir as novas cores
+            emoji = "🔵" if outcome == 'H' else "🔴" if outcome == 'A' else "🟡"
             with cols[i - start]:
                 st.markdown(f"<div style='font-size: 24px; text-align: center;'>{emoji}</div>", unsafe_allow_html=True)
 else:
@@ -333,13 +385,16 @@ if st.session_state.analyzer.signals:
         display = ""
         bg_color = ""
         if signal['prediction'] == 'H':
-            display = "🔴 JOGADOR"
-            bg_color = "rgba(255, 0, 0, 0.1)"
-        elif signal['prediction'] == 'A':
-            display = "🔵 BANCA"
+            display = "🔵 JOGADOR"
+            # Cor de fundo para o Jogador (Azul)
             bg_color = "rgba(0, 0, 255, 0.1)"
+        elif signal['prediction'] == 'A':
+            display = "🔴 BANCA"
+            # Cor de fundo para a Banca (Vermelho)
+            bg_color = "rgba(255, 0, 0, 0.1)"
         else:
             display = "🟡 EMPATE"
+            # Cor de fundo para o Empate (Amarelo)
             bg_color = "rgba(255, 255, 0, 0.1)"
 
         status = signal.get('correct', '')
