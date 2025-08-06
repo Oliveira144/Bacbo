@@ -1,17 +1,14 @@
+import streamlit as st
 import collections
 
+# --- Classe de Detecção de Padrões (a mesma lógica, mas integrada) ---
 class AnalisadorDePadroes:
-    def __init__(self):
-        self.historico = collections.deque(maxlen=10) # Armazena as últimas 10 jogadas
-
-    def adicionar_jogada(self, resultado, soma):
-        """Adiciona uma nova jogada ao histórico."""
-        self.historico.append({'resultado': resultado, 'soma': soma})
+    def __init__(self, historico):
+        self.historico = historico
 
     def analisar_padroes(self, tipo_analise):
-        """Analisa o histórico com base no tipo escolhido pelo usuário."""
         if len(self.historico) < 2:
-            return {"sugestoes": ["Aguardando mais dados para análise."]}
+            return ["Aguardando mais dados para análise."]
 
         sugestoes = []
 
@@ -24,13 +21,12 @@ class AnalisadorDePadroes:
         elif tipo_analise == 'combinacao':
             sugestoes.extend(self._analisar_combinacao())
         else:
-            # Opção de análise completa, caso o usuário não escolha
             sugestoes.extend(self._analisar_cor())
             sugestoes.extend(self._analisar_soma())
             sugestoes.extend(self._analisar_tie())
             sugestoes.extend(self._analisar_combinacao())
 
-        return {"sugestoes": sugestoes, "historico_recente": list(self.historico)}
+        return sugestoes
 
     def _analisar_cor(self):
         sugestoes = []
@@ -143,62 +139,56 @@ class AnalisadorDePadroes:
 
         return sugestoes
 
-# --- Interface do Usuário (CLI) ---
-def main():
-    analisador = AnalisadorDePadroes()
-    print("Analisador de Padrões de Apostas (CLI)")
+# --- Interface do Usuário (Streamlit) ---
+st.set_page_config(page_title="Analisador de Padrões", layout="wide")
+
+st.title("Analisador de Padrões de Apostas")
+st.markdown("""
+Esta ferramenta ajuda a identificar padrões em jogos para auxiliar suas decisões de aposta.
+Basta inserir o resultado de cada rodada.
+""")
+
+# Inicializa o histórico no estado da sessão do Streamlit
+if 'historico' not in st.session_state:
+    st.session_state.historico = collections.deque(maxlen=10)
+
+# Sidebar para exibir o histórico
+st.sidebar.header("Histórico Recente")
+for jogada in list(st.session_state.historico):
+    st.sidebar.write(f"**{jogada['resultado']}** (Soma: {jogada['soma']})")
+
+# Widget para selecionar o tipo de análise
+st.header("1. Selecione o Tipo de Análise")
+tipo_analise = st.radio(
+    "Escolha uma estratégia:",
+    ('Cor', 'Soma', 'Tie', 'Combinação', 'Análise Completa')
+)
+
+# Formulário para adicionar uma nova jogada
+st.header("2. Insira o Resultado da Rodada")
+with st.form("nova_jogada"):
+    col1, col2 = st.columns(2)
+    with col1:
+        resultado = st.selectbox("Resultado", ('P', 'B', 'T'))
+    with col2:
+        soma = st.number_input("Soma", min_value=2, max_value=12, value=8)
     
-    while True:
-        print("\nEscolha o tipo de análise:")
-        print("1. Cor (Player/Banker)")
-        print("2. Soma Total")
-        print("3. Tie (Empate)")
-        print("4. Combinação (Cor + Soma)")
-        print("5. Análise Completa")
-        print("0. Sair")
+    submitted = st.form_submit_button("Adicionar Rodada")
+    if submitted:
+        st.session_state.historico.append({'resultado': resultado, 'soma': soma})
+        st.success(f"Rodada adicionada: **{resultado}** (Soma: {soma})")
+        # Força a reexecução para atualizar o histórico
+        st.rerun()
 
-        escolha = input("Digite o número da sua escolha: ")
-        
-        if escolha == '0':
-            print("Encerrando o programa.")
-            break
-        
-        mapeamento = {'1': 'cor', '2': 'soma', '3': 'tie', '4': 'combinacao', '5': 'completa'}
-        tipo_analise = mapeamento.get(escolha)
+# Executa a análise e exibe as sugestões
+if st.session_state.historico:
+    st.header("3. Sugestões de Aposta")
+    analisador = AnalisadorDePadroes(st.session_state.historico)
+    sugestoes = analisador.analisar_padroes(tipo_analise.lower())
 
-        if not tipo_analise:
-            print("Escolha inválida. Por favor, tente novamente.")
-            continue
-        
-        try:
-            entrada_raw = input("Digite o resultado e a soma da rodada (ex: P 8): ").upper()
-            partes = entrada_raw.split()
-            if len(partes) != 2:
-                raise ValueError("Formato incorreto. Digite 'P 8' ou similar.")
-            
-            resultado = partes[0]
-            soma = int(partes[1])
+    if sugestoes and sugestoes[0] != "Aguardando mais dados para análise.":
+        for sugestao in sugestoes:
+            st.info(sugestao)
+    else:
+        st.warning("Nenhum padrão detectado no momento. Mantenha a cautela.")
 
-            if resultado not in ['P', 'B', 'T']:
-                raise ValueError("Resultado deve ser P, B ou T.")
-
-            analisador.adicionar_jogada(resultado, soma)
-            analise = analisador.analisar_padroes(tipo_analise)
-
-            print("\n--- Análise Atual ---")
-            print("Histórico Recente:", [f"{j['resultado']}({j['soma']})" for j in analise['historico_recente']])
-            
-            if analise['sugestoes']:
-                print("\n**Sugestões de Aposta:**")
-                for sugestao in analise['sugestoes']:
-                    print(f"- {sugestao}")
-            else:
-                print("Nenhum padrão detectado no momento. Mantenha a cautela.")
-            
-            print("-----------------------\n")
-
-        except (ValueError, IndexError) as e:
-            print(f"Erro: {e}. Por favor, tente novamente.")
-
-if __name__ == "__main__":
-    main()
