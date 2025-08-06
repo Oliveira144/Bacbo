@@ -1,421 +1,204 @@
-import streamlit as st
-import json
-import os
-from datetime import datetime
+import collections
 
-class BacBoAnalyzer:
+class AnalisadorDePadroes:
     def __init__(self):
-        self.history = []
-        self.signals = []
-        self.performance = {'total': 0, 'hits': 0, 'misses': 0}
-        self.load_data()
+        self.historico = collections.deque(maxlen=10) # Armazena as últimas 10 jogadas
 
-    def add_outcome(self, outcome):
-        """Adiciona um novo resultado ao histórico e dispara a análise."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.history.append((timestamp, outcome))
-        is_correct = self.verify_previous_prediction(outcome)
-        pattern, prediction = self.detect_pattern()
+    def adicionar_jogada(self, resultado, soma):
+        """Adiciona uma nova jogada ao histórico."""
+        self.historico.append({'resultado': resultado, 'soma': soma})
 
-        if pattern is not None:
-            self.signals.append({
-                'time': timestamp,
-                'pattern': pattern,
-                'prediction': prediction,
-                'correct': None
-            })
+    def analisar_padroes(self, tipo_analise):
+        """Analisa o histórico com base no tipo escolhido pelo usuário."""
+        if len(self.historico) < 2:
+            return {"sugestoes": ["Aguardando mais dados para análise."]}
 
-        self.save_data()
-        return pattern, prediction, is_correct
+        sugestoes = []
 
-    def verify_previous_prediction(self, current_outcome):
-        """Verifica se a última sugestão foi correta e atualiza as métricas."""
-        for i in reversed(range(len(self.signals))):
-            signal = self.signals[i]
-            if signal.get('correct') is None:
-                if signal['prediction'] == current_outcome:
-                    self.performance['hits'] += 1
-                    self.performance['total'] += 1
-                    signal['correct'] = "✅"
-                    return "✅"
+        if tipo_analise == 'cor':
+            sugestoes.extend(self._analisar_cor())
+        elif tipo_analise == 'soma':
+            sugestoes.extend(self._analisar_soma())
+        elif tipo_analise == 'tie':
+            sugestoes.extend(self._analisar_tie())
+        elif tipo_analise == 'combinacao':
+            sugestoes.extend(self._analisar_combinacao())
+        else:
+            # Opção de análise completa, caso o usuário não escolha
+            sugestoes.extend(self._analisar_cor())
+            sugestoes.extend(self._analisar_soma())
+            sugestoes.extend(self._analisar_tie())
+            sugestoes.extend(self._analisar_combinacao())
+
+        return {"sugestoes": sugestoes, "historico_recente": list(self.historico)}
+
+    def _analisar_cor(self):
+        sugestoes = []
+        ultimos_resultados = [j['resultado'] for j in self.historico]
+
+        # Padrão 1 – Alternância Controlada
+        if len(ultimos_resultados) >= 3 and ultimos_resultados[-1] != ultimos_resultados[-2] and ultimos_resultados[-2] != ultimos_resultados[-3]:
+            if len(ultimos_resultados) >= 4 and ultimos_resultados[-3] != ultimos_resultados[-4]:
+                sugestoes.append("Padrão 1 (Alternância): A alternância de 4 jogadas foi quebrada. Não siga o padrão de zigue-zague.")
+            else:
+                sugestoes.append("Padrão 1 (Alternância): Mantenha a aposta no padrão até a 3ª jogada. Após isso, saia.")
+        
+        # Padrão 2 – Streak Longa
+        streak_count = 0
+        if len(ultimos_resultados) >= 2:
+            cor_atual = ultimos_resultados[-1]
+            for i in range(len(ultimos_resultados) - 2, -1, -1):
+                if ultimos_resultados[i] == cor_atual:
+                    streak_count += 1
                 else:
-                    self.performance['misses'] += 1
-                    self.performance['total'] += 1
-                    signal['correct'] = "❌"
-                    return "❌"
-        return None
-
-    def undo_last(self):
-        """Desfaz o último resultado e a última sugestão."""
-        if self.history:
-            removed_time, _ = self.history.pop()
-            if self.signals and self.signals[-1]['time'] == removed_time:
-                removed_signal = self.signals.pop()
-                if removed_signal.get('correct') == "✅":
-                    self.performance['hits'] = max(0, self.performance['hits'] - 1)
-                    self.performance['total'] = max(0, self.performance['total'] - 1)
-                elif removed_signal.get('correct') == "❌":
-                    self.performance['misses'] = max(0, self.performance['misses'] - 1)
-                    self.performance['total'] = max(0, self.performance['total'] - 1)
-            self.save_data()
-            return True
-        return False
-
-    def clear_history(self):
-        """Limpa todo o histórico e as métricas."""
-        self.history = []
-        self.signals = []
-        self.performance = {'total': 0, 'hits': 0, 'misses': 0}
-        self.save_data()
-
-    def detect_pattern(self):
-        """
-        Detecta padrões no histórico com base na lista de 30 padrões fornecida,
-        priorizando os mais longos e mais fortes.
-        (H=Player, A=Banker, T=Tie)
-        """
-        if len(self.history) < 2:
-            return None, None
-
-        outcomes = [outcome for _, outcome in self.history]
-        n = len(outcomes)
-
-        # ----------------------------------------------------
-        # Padrões mais longos e de maior prioridade
-        # ----------------------------------------------------
-
-        # Padrão 29: Tie x4 ou mais
-        if n >= 4 and outcomes[-4:] == ['T', 'T', 'T', 'T']:
-            return 29, 'H'
-
-        # Padrão 26: Banker x3 - Tie - Player x3
-        if n >= 7 and outcomes[-7:] == ['A', 'A', 'A', 'T', 'H', 'H', 'H']:
-            return 26, 'H'
-
-        # Padrão 25: Player x3 - Tie - Banker x3
-        if n >= 7 and outcomes[-7:] == ['H', 'H', 'H', 'T', 'A', 'A', 'A']:
-            return 25, 'A'
+                    break
             
-        # Padrão 24: Banker x2 - Tie - Player x2
-        if n >= 5 and outcomes[-5:] == ['A', 'A', 'T', 'H', 'H']:
-            return 24, 'H'
+            if 2 <= streak_count <= 4:
+                sugestoes.append(f"Padrão 2 (Streak Longa): {cor_atual} está em sequência de {streak_count+1}. Entre com aposta leve.")
+            elif streak_count >= 5:
+                sugestoes.append(f"Padrão 2 (Streak Longa): {cor_atual} está em sequência longa de {streak_count+1}. Aposte contra a tendência com cautela.")
 
-        # Padrão 23: Player x2 - Tie - Banker x2
-        if n >= 5 and outcomes[-5:] == ['H', 'H', 'T', 'A', 'A']:
-            return 23, 'A'
-
-        # Padrão 18: Tie - Player - Tie - Banker - Tie
-        if n >= 5 and outcomes[-5:] == ['T', 'H', 'T', 'A', 'T']:
-            return 18, 'T'
-            
-        # Padrão 16: Tie - Tie - Player
-        if n >= 3 and outcomes[-3:] == ['T', 'T', 'H']:
-            return 16, 'H'
-
-        # Padrão 17: Tie - Tie - Banker
-        if n >= 3 and outcomes[-3:] == ['T', 'T', 'A']:
-            return 17, 'A'
-
-        # Padrão 7: Player x4 ou mais
-        if n >= 4 and outcomes[-4:] == ['H', 'H', 'H', 'H']:
-            return 7, 'H'
-
-        # Padrão 8: Banker x4 ou mais
-        if n >= 4 and outcomes[-4:] == ['A', 'A', 'A', 'A']:
-            return 8, 'A'
-
-        # Padrão 27: Tie x2
-        if n >= 2 and outcomes[-2:] == ['T', 'T']:
-            return 27, 'T'
-
-        # ----------------------------------------------------
-        # Padrões de Média Prioridade
-        # ----------------------------------------------------
+        # Padrão 3 – Dupla Camuflada
+        if len(ultimos_resultados) >= 4:
+            if (ultimos_resultados[-1] == ultimos_resultados[-2] and
+                ultimos_resultados[-3] == ultimos_resultados[-4] and
+                ultimos_resultados[-1] != ultimos_resultados[-3]):
+                sugestoes.append("Padrão 3 (Dupla Camuflada): Detectado pares seguidos. Provável que venha outro par.")
         
-        # Padrão 4: Player x3
-        if n >= 3 and outcomes[-3:] == ['H', 'H', 'H']:
-            return 4, 'H'
+        return sugestoes
 
-        # Padrão 5: Banker x3
-        if n >= 3 and outcomes[-3:] == ['A', 'A', 'A']:
-            return 5, 'A'
+    def _analisar_soma(self):
+        sugestoes = []
+        ultimas_somas = [j['soma'] for j in self.historico]
 
-        # Padrão 6: Tie x3
-        if n >= 3 and outcomes[-3:] == ['T', 'T', 'T']:
-            return 6, 'T'
+        def tipo_soma(soma):
+            if 10 <= soma <= 12: return 'alta'
+            if 2 <= soma <= 5: return 'baixa'
+            return 'mediana'
 
-        # Padrão 12: Player - Tie - Player
-        if n >= 3 and outcomes[-3:] == ['H', 'T', 'H']:
-            return 12, 'H'
+        # Padrão 4 – Ciclo de Altos/Baixos
+        if len(ultimas_somas) >= 2:
+            tipo_1 = tipo_soma(ultimas_somas[-1])
+            tipo_2 = tipo_soma(ultimas_somas[-2])
+            if tipo_1 == 'alta' and tipo_2 == 'alta':
+                sugestoes.append("Padrão 4 (Altos/Baixos): Duas somas altas consecutivas. Próximo resultado tende a ser baixo.")
+
+        # Padrão 5 – Equilíbrio Gradual
+        if len(ultimas_somas) >= 3:
+            tipos = [tipo_soma(s) for s in ultimas_somas[-3:]]
+            if all(t in ['alta', 'baixa'] for t in tipos):
+                sugestoes.append("Padrão 5 (Equilíbrio): As últimas 3 somas foram extremas. Prepare-se para uma soma mediana.")
+
+        # Padrão 6 – Quebra Estatística
+        if len(ultimas_somas) >= 3:
+            if (ultimas_somas[-3] < ultimas_somas[-2] < ultimas_somas[-1] or
+                ultimas_somas[-3] > ultimas_somas[-2] > ultimas_somas[-1]):
+                sugestoes.append("Padrão 6 (Quebra Estatística): Sequência crescente/decrescente detectada. Espere uma quebra abrupta.")
         
-        # Padrão 13: Banker - Tie - Banker
-        if n >= 3 and outcomes[-3:] == ['A', 'T', 'A']:
-            return 13, 'A'
-
-        # Padrão 14: Player - Tie - Banker
-        if n >= 3 and outcomes[-3:] == ['H', 'T', 'A']:
-            return 14, 'A' # Aposta equilibrada no Banker
-
-        # Padrão 15: Banker - Tie - Player
-        if n >= 3 and outcomes[-3:] == ['A', 'T', 'H']:
-            return 15, 'H' # Aposta equilibrada no Player
-
-        # Padrão 19: Player - Player - Tie - Player
-        if n >= 4 and outcomes[-4:] == ['H', 'H', 'T', 'H']:
-            return 19, 'H'
-        
-        # Padrão 21: Banker - Tie - Banker - Tie - Banker
-        if n >= 5 and outcomes[-5:] == ['A', 'T', 'A', 'T', 'A']:
-            return 21, 'A'
-
-        # Padrão 22: Player - Tie - Player - Tie - Player
-        if n >= 5 and outcomes[-5:] == ['H', 'T', 'H', 'T', 'H']:
-            return 22, 'H'
-
-        # Padrão 30: Player - Banker - Player (sanduíche)
-        if n >= 3 and outcomes[-3:] == ['H', 'A', 'H']:
-            return 30, 'A'
-        
-        # ----------------------------------------------------
-        # Padrões de Menor Prioridade
-        # ----------------------------------------------------
-
-        # Padrão 1: Player x2
-        if n >= 2 and outcomes[-2:] == ['H', 'H']:
-            return 1, 'H'
-
-        # Padrão 2: Banker x2
-        if n >= 2 and outcomes[-2:] == ['A', 'A']:
-            return 2, 'A'
-
-        # Padrão 3: Tie x2
-        if n >= 2 and outcomes[-2:] == ['T', 'T']:
-            return 3, 'T'
-
-        # Padrão 9: Player - Banker - Player - Banker
-        if n >= 4 and outcomes[-4:] == ['H', 'A', 'H', 'A']:
-            return 9, 'H'
-
-        # Padrão 10: Banker - Player - Banker - Player
-        if n >= 4 and outcomes[-4:] == ['A', 'H', 'A', 'H']:
-            return 10, 'A'
-
-        # Padrão 11: Tie - Player - Tie - Banker
-        if n >= 4 and outcomes[-4:] == ['T', 'H', 'T', 'A']:
-            return 11, 'T'
-
-        # Padrão 20: Player - Tie - Banker - Tie - Player
-        if n >= 5 and outcomes[-5:] == ['H', 'T', 'A', 'T', 'H']:
-            return 20, 'T'
-
-        # Padrão 28: Tie x3
-        if n >= 3 and outcomes[-3:] == ['T', 'T', 'T']:
-            return 28, 'H'
-            
-        return None, None
-
-    def load_data(self):
-        """Carrega os dados salvos de um arquivo JSON."""
-        if os.path.exists('analyzer_data.json'):
-            with open('analyzer_data.json', 'r') as f:
-                try:
-                    data = json.load(f)
-                    self.history = data.get('history', [])
-                    self.signals = data.get('signals', [])
-                    self.performance = data.get('performance', {'total': 0, 'hits': 0, 'misses': 0})
-                except json.JSONDecodeError:
-                    st.warning("Arquivo de dados corrompido. Reiniciando o histórico.")
-                    self.history = []
-                    self.signals = []
-                    self.performance = {'total': 0, 'hits': 0, 'misses': 0}
-        else:
-            self.save_data()
-
-    def save_data(self):
-        """Salva o estado atual do histórico e das métricas em um arquivo JSON."""
-        data = {
-            'history': self.history,
-            'signals': self.signals,
-            'performance': self.performance
-        }
-        with open('analyzer_data.json', 'w') as f:
-            json.dump(data, f, indent=4)
-
-    def get_accuracy(self):
-        """Calcula a acurácia do sistema."""
-        if self.performance['total'] == 0:
-            return 0.0
-        return (self.performance['hits'] / self.performance['total']) * 100
-
-# Inicialização do aplicativo
-if 'analyzer' not in st.session_state:
-    st.session_state.analyzer = BacBoAnalyzer()
-
-# Interface do Streamlit
-st.set_page_config(page_title="Bac Bo Analyzer", layout="wide", page_icon="🎲")
-st.title("🎲 Bac Bo Analyzer Pro")
-st.subheader("Sistema de detecção de padrões para Bac Bo")
-
-st.markdown("---")
-
-## Registrar Resultado da Rodada
-
-st.write("Para registrar o resultado da última rodada, selecione uma das opções abaixo:")
-st.markdown("<br>", unsafe_allow_html=True)
-st.write("**Qual foi o resultado da última rodada?**")
-
-cols_outcome = st.columns(3)
-with cols_outcome[0]:
-    # Botão para JOGADOR (AZUL)
-    if st.button("🔵 Jogador", use_container_width=True, type="primary"):
-        st.session_state.analyzer.add_outcome('H')
-        st.rerun()
-with cols_outcome[1]:
-    # Botão para BANCA (VERMELHO)
-    if st.button("🔴 Banca", use_container_width=True):
-        st.session_state.analyzer.add_outcome('A')
-        st.rerun()
-with cols_outcome[2]:
-    # Botão para EMPATE (AMARELO)
-    if st.button("🟡 Empate", use_container_width=True):
-        st.session_state.analyzer.add_outcome('T')
-        st.rerun()
-
-st.markdown("---")
-st.subheader("Controles do Histórico")
-cols_controls = st.columns(2)
-with cols_controls[0]:
-    if st.button("↩️ Desfazer Último", use_container_width=True):
-        st.session_state.analyzer.undo_last()
-        st.rerun()
-with cols_controls[1]:
-    if st.button("🗑️ Limpar Tudo", use_container_width=True, type="secondary"):
-        st.session_state.analyzer.clear_history()
-        st.rerun()
-
-st.markdown("---")
-
-## Sugestão para a Próxima Rodada
-
-current_pattern, current_prediction = st.session_state.analyzer.detect_pattern()
-
-if current_prediction:
-    display_prediction = ""
-    bg_color_prediction = ""
-    if current_prediction == 'H':
-        display_prediction = "🔵 JOGADOR"
-        # Cor de fundo para o Jogador (Azul)
-        bg_color_prediction = "rgba(0, 0, 255, 0.2)"
-    elif current_prediction == 'A':
-        display_prediction = "🔴 BANCA"
-        # Cor de fundo para a Banca (Vermelho)
-        bg_color_prediction = "rgba(255, 0, 0, 0.2)"
-    else:
-        display_prediction = "🟡 EMPATE"
-        # Cor de fundo para o Empate (Amarelo)
-        bg_color_prediction = "rgba(255, 255, 0, 0.2)"
-
-    st.markdown(f"""
-    <div style="
-        background: {bg_color_prediction};
-        border-radius: 15px;
-        padding: 20px;
-        margin: 20px 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-        border: 2px solid #fff;
-    ">
-        <div style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">
-            Sugestão Baseada no Padrão {current_pattern}:
-        </div>
-        <div style="font-size: 40px; font-weight: bold; color: #fff; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">
-            {display_prediction}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-else:
-    st.info("Registre pelo menos 2 resultados para ver uma sugestão para a próxima rodada.")
-
-st.markdown("---")
-
-## Métricas de Desempenho
-
-accuracy = st.session_state.analyzer.get_accuracy()
-col1, col2, col3 = st.columns(3)
-col1.metric("Acurácia", f"{accuracy:.2f}%" if st.session_state.analyzer.performance['total'] > 0 else "0%")
-col2.metric("Total de Previsões", st.session_state.analyzer.performance['total'])
-col3.metric("Acertos", st.session_state.analyzer.performance['hits'])
-
-st.markdown("---")
-
-## Histórico de Resultados
-
-st.caption("Mais recente → Mais antigo (esquerda → direita)")
-
-if st.session_state.analyzer.history:
-    outcomes = [outcome for _, outcome in st.session_state.analyzer.history][::-1][:72]
-    total = len(outcomes)
+        return sugestoes
     
-    num_cols = 9
-    num_rows = (total + num_cols - 1) // num_cols
+    def _analisar_tie(self):
+        sugestoes = []
+        ultimos_resultados = [j['resultado'] for j in self.historico]
+        
+        if 'T' in ultimos_resultados:
+            # Padrão 9 – Duplo Empate Camuflado
+            tie_indices = [i for i, r in enumerate(ultimos_resultados) if r == 'T']
+            if len(tie_indices) >= 1:
+                ultimo_tie_idx = tie_indices[-1]
+                if (len(ultimos_resultados) - 1) - ultimo_tie_idx <= 2:
+                    sugestoes.append("Padrão 9 (Duplo Tie): Um Tie recente. Considere uma segunda aposta leve no Tie.")
+        
+        # Padrão 7 – Âncora após Streak
+        if len(ultimos_resultados) >= 4:
+            streak_count = 0
+            cor_atual = ultimos_resultados[-2]
+            for i in range(len(ultimos_resultados) - 3, -1, -1):
+                if ultimos_resultados[i] == cor_atual:
+                    streak_count += 1
+                else:
+                    break
+            if streak_count >= 3 and ultimos_resultados[-1] != cor_atual:
+                sugestoes.append("Padrão 7 (Tie após Streak): Uma streak longa foi quebrada. Aposta leve em Tie pode ser uma boa opção.")
+
+        # Padrão 8 – Tie após Reversão
+        if len(ultimos_resultados) >= 4:
+            if (ultimos_resultados[-2] == 'P' and ultimos_resultados[-1] == 'B') or \
+               (ultimos_resultados[-2] == 'B' and ultimos_resultados[-1] == 'P'):
+                sugestoes.append("Padrão 8 (Tie após Reversão): Quebra de tendência detectada. Tie tem alta probabilidade nos próximos lançamentos.")
+        
+        return sugestoes
+
+    def _analisar_combinacao(self):
+        sugestoes = []
+        ultimos_resultados = [j['resultado'] for j in self.historico]
+        ultimas_somas = [j['soma'] for j in self.historico]
+        
+        if len(ultimos_resultados) >= 4:
+            resultados_streak = ultimos_resultados[-4:]
+            somas_streak = ultimas_somas[-4:]
+            
+            if resultados_streak == ['P', 'P', 'P', 'P'] and all(s > 8 for s in somas_streak):
+                sugestoes.append("Combinação (Cor + Soma): Histórico de P(11), P(9), P(10), P(8). Alta chance de Tie ou Banker. Aposte 80% Banker e 20% Tie.")
+
+        return sugestoes
+
+# --- Interface do Usuário (CLI) ---
+def main():
+    analisador = AnalisadorDePadroes()
+    print("Analisador de Padrões de Apostas (CLI)")
     
-    for row in range(num_rows):
-        cols = st.columns(num_cols)
-        start = row * num_cols
-        end = min(start + num_cols, total)
+    while True:
+        print("\nEscolha o tipo de análise:")
+        print("1. Cor (Player/Banker)")
+        print("2. Soma Total")
+        print("3. Tie (Empate)")
+        print("4. Combinação (Cor + Soma)")
+        print("5. Análise Completa")
+        print("0. Sair")
 
-        for i in range(start, end):
-            outcome = outcomes[i]
-            # Atualiza os emojis para refletir as novas cores
-            emoji = "🔵" if outcome == 'H' else "🔴" if outcome == 'A' else "🟡"
-            with cols[i - start]:
-                st.markdown(f"<div style='font-size: 24px; text-align: center;'>{emoji}</div>", unsafe_allow_html=True)
-else:
-    st.info("Nenhum resultado registrado. Use os botões acima para começar.")
+        escolha = input("Digite o número da sua escolha: ")
+        
+        if escolha == '0':
+            print("Encerrando o programa.")
+            break
+        
+        mapeamento = {'1': 'cor', '2': 'soma', '3': 'tie', '4': 'combinacao', '5': 'completa'}
+        tipo_analise = mapeamento.get(escolha)
 
-st.markdown("---")
+        if not tipo_analise:
+            print("Escolha inválida. Por favor, tente novamente.")
+            continue
+        
+        try:
+            entrada_raw = input("Digite o resultado e a soma da rodada (ex: P 8): ").upper()
+            partes = entrada_raw.split()
+            if len(partes) != 2:
+                raise ValueError("Formato incorreto. Digite 'P 8' ou similar.")
+            
+            resultado = partes[0]
+            soma = int(partes[1])
 
-## Últimas Sugestões/Previsões
+            if resultado not in ['P', 'B', 'T']:
+                raise ValueError("Resultado deve ser P, B ou T.")
 
-if st.session_state.analyzer.signals:
-    for signal in st.session_state.analyzer.signals[-5:][::-1]:
-        display = ""
-        bg_color = ""
-        if signal['prediction'] == 'H':
-            display = "🔵 JOGADOR"
-            # Cor de fundo para o Jogador (Azul)
-            bg_color = "rgba(0, 0, 255, 0.1)"
-        elif signal['prediction'] == 'A':
-            display = "🔴 BANCA"
-            # Cor de fundo para a Banca (Vermelho)
-            bg_color = "rgba(255, 0, 0, 0.1)"
-        else:
-            display = "🟡 EMPATE"
-            # Cor de fundo para o Empate (Amarelo)
-            bg_color = "rgba(255, 255, 0, 0.1)"
+            analisador.adicionar_jogada(resultado, soma)
+            analise = analisador.analisar_padroes(tipo_analise)
 
-        status = signal.get('correct', '')
-        color = "green" if status == "✅" else "red" if status == "❌" else "gray"
+            print("\n--- Análise Atual ---")
+            print("Histórico Recente:", [f"{j['resultado']}({j['soma']})" for j in analise['historico_recente']])
+            
+            if analise['sugestoes']:
+                print("\n**Sugestões de Aposta:**")
+                for sugestao in analise['sugestoes']:
+                    print(f"- {sugestao}")
+            else:
+                print("Nenhum padrão detectado no momento. Mantenha a cautela.")
+            
+            print("-----------------------\n")
 
-        st.markdown(f"""
-        <div style="
-            background: {bg_color};
-            border-radius: 10px;
-            padding: 12px;
-            margin: 10px 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        ">
-            <div><strong>Padrão {signal['pattern']}</strong></div>
-            <div style="font-size: 24px; font-weight: bold;">{display}</div>
-            <div style="color: {color}; font-weight: bold; font-size: 24px;">{status}</div>
-        </div>
-        """, unsafe_allow_html=True)
-else:
-    st.info("Registre resultados para gerar sugestões. Após 2+ rodadas, as previsões aparecerão aqui.")
+        except (ValueError, IndexError) as e:
+            print(f"Erro: {e}. Por favor, tente novamente.")
 
+if __name__ == "__main__":
+    main()
